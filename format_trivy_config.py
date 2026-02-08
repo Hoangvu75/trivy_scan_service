@@ -23,9 +23,8 @@ def main():
         print("No misconfigurations found.")
         return
 
-    # Path + tên file:
-    # - playground-harbor.yaml -> apps/playground/harbor/playground-harbor.yaml
-    # - infra-ingress-nginx.yaml -> apps/infra/ingress-nginx/infra-ingress-nginx.yaml
+    # Path app trong k8s_manifest. Chuẩn: {env}-{app}.yaml -> apps/{env}/{app}
+    # Áp dụng cho mọi env: playground, infra, prod, staging, ...
     def target_to_path(target: str) -> str:
         if not target:
             return "unknown"
@@ -33,11 +32,9 @@ def main():
         filename = parts[-1]
         stem = filename.replace(".yaml", "").replace(".yml", "")
         if "-" in stem:
-            first, *rest = stem.split("-", 1)
-            if first in ("playground", "infra"):
-                env, app = first, rest[0] if rest else stem
-                return f"apps/{env}/{app}/{filename}"
-        return f"apps/playground/{stem}/{filename}"
+            env, app = stem.split("-", 1)
+            return f"apps/{env}/{app}"
+        return f"apps/playground/{stem}"
 
     rows = []
     for r in results:
@@ -70,7 +67,7 @@ def main():
     w0, w1, w2, w3, w4 = col_widths
 
     sep = "+" + "-" * (w0 + 2) + "+" + "-" * (w1 + 2) + "+" + "-" * (w2 + 2) + "+" + "-" * (w3 + 2) + "+" + "-" * (w4 + 2) + "+"
-    header = f"| {'File (k8s_manifest)'[:w0].ljust(w0)} | {'ID'.ljust(w1)} | {'Severity'.ljust(w2)} | {'Lines'.ljust(w3)} | {'Title'.ljust(w4)} |"
+    header = f"| {'Path (k8s_manifest)'[:w0].ljust(w0)} | {'ID'.ljust(w1)} | {'Severity'.ljust(w2)} | {'Lines'.ljust(w3)} | {'Title'.ljust(w4)} |"
 
     lines = [
         "Report Summary (Misconfigurations)",

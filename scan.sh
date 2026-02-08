@@ -1,5 +1,5 @@
 #!/bin/sh
-# Scan all playground apps in k8s_manifest
+# Scan toàn bộ apps trong k8s_manifest (apps/*/ - playground, infra, prod, ...)
 set -e
 
 WORK_DIR="${WORK_DIR:-/tmp/scan}"
@@ -20,21 +20,21 @@ git clone --depth 1 "$REPO_URL" k8s_manifest 2>/dev/null
 
 cd k8s_manifest
 
-# Render toàn bộ apps (playground + infra) ra file riêng
-# Format: {env}-{app}.yaml (vd: playground-harbor.yaml, infra-ingress-nginx.yaml)
+# Render toàn bộ apps: duyệt apps/*/*, format: {env}-{app}.yaml
+# Ví dụ: playground-harbor.yaml, infra-ingress-nginx.yaml, prod-api.yaml
 RENDERED_DIR="$WORK_DIR/rendered"
 mkdir -p "$RENDERED_DIR"
 rm -f "$RENDERED_DIR"/*.yaml 2>/dev/null || true
 
-for env in playground infra; do
-  if [ -d "apps/$env" ]; then
-    for app_dir in apps/"$env"/*; do
-      [ -d "$app_dir" ] || continue
-      app=$(basename "$app_dir")
-      echo "Rendering $env/$app..."
-      kubectl kustomize --enable-helm "$app_dir" 2>/dev/null > "$RENDERED_DIR/${env}-${app}.yaml" || true
-    done
-  fi
+for env_dir in apps/*/; do
+  [ -d "$env_dir" ] || continue
+  env=$(basename "$env_dir")
+  for app_dir in "$env_dir"*/; do
+    [ -d "$app_dir" ] || continue
+    app=$(basename "$app_dir")
+    echo "Rendering $env/$app..."
+    kubectl kustomize --enable-helm "$app_dir" 2>/dev/null > "$RENDERED_DIR/${env}-${app}.yaml" || true
+  done
 done
 
 # Scan - output JSON, format thành table qua Python
