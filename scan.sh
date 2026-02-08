@@ -10,8 +10,14 @@ export TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-/tmp/trivy-cache}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/trivy-cache}"
 mkdir -p "$TRIVY_CACHE_DIR"
 
-# Dọn namespace tạm từ lần chạy trước (tránh "job already exists")
+# Dọn namespace tạm từ lần chạy trước (tránh "job already exists" / "being terminated")
 kubectl delete namespace trivy-temp --ignore-not-found=true --timeout=15s 2>/dev/null || true
+# Chờ namespace xóa hẳn (Terminating có thể mất vài giây)
+n=0
+while kubectl get namespace trivy-temp 2>/dev/null && [ "$n" -lt 45 ]; do
+  sleep 1
+  n=$((n + 1))
+done
 
 echo "=== K8s Cluster Trivy Scan (live) ==="
 # TRIVY_SKIP_IMAGES=1: chỉ misconfig (~1-2 phút). Để trống: misconfig + vuln (~10-15 phút).

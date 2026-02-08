@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Trivy K8s manifest scan service - HTTP /scan endpoint, posts results to Discord."""
+"""Trivy K8s manifest scan service - HTTP /scan endpoint, posts results to Discord. Supports cron mode (one-shot)."""
 import os
+import sys
 import subprocess
 import tempfile
 import urllib.request
@@ -220,5 +221,18 @@ def scan():
 
 
 if __name__ == "__main__":
+    # Chế độ cron: chạy scan 1 lần, gửi Discord/callback rồi thoát (dùng cho CronJob)
+    if len(sys.argv) > 1 and sys.argv[1] == "cron":
+        callback_url = os.environ.get("CALLBACK_URL", "").strip() or None
+        webhook = DISCORD_WEBHOOK or None
+        if not callback_url and not webhook:
+            print("[cron] Error: set DISCORD_WEBHOOK_URL or CALLBACK_URL", flush=True)
+            sys.exit(1)
+        run_scan_and_notify(
+            webhook_url=webhook if not callback_url else None,
+            callback_url=callback_url,
+            scan_target="cluster",
+        )
+        sys.exit(0)
     port = int(os.environ.get("PORT", "8080"))
     app.run(host="0.0.0.0", port=port)
