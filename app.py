@@ -21,12 +21,15 @@ MANIFEST_REPO = os.environ.get("MANIFEST_REPO", "https://github.com/Hoangvu75/k8
 GIT_TOKEN = os.environ.get("GIT_TOKEN", "")
 
 
-def run_scan(manifest_repo=None, git_token=None):
-    """Run trivy scan and return (output, exit_code)."""
+def run_scan(manifest_repo=None, git_token=None, scan_target=None):
+    """Run trivy scan and return (output, exit_code).
+    scan_target: 'cluster' = trivy k8s (live cluster), 'manifest' or None = repo manifest."""
     env = os.environ.copy()
     env["MANIFEST_REPO"] = manifest_repo or MANIFEST_REPO
     env["GIT_TOKEN"] = git_token or GIT_TOKEN
     env["WORK_DIR"] = tempfile.mkdtemp()
+    if scan_target in ("cluster", "manifest"):
+        env["SCAN_TARGET"] = scan_target
 
     try:
         result = subprocess.run(
@@ -75,12 +78,12 @@ def post_to_discord(content: str, webhook_url: str) -> bool:
     return _post_json(webhook_url, {"content": f"```\n{content}\n```"})
 
 
-def run_scan_and_notify(webhook_url=None, callback_url=None, manifest_repo=None, git_token=None):
+def run_scan_and_notify(webhook_url=None, callback_url=None, manifest_repo=None, git_token=None, scan_target=None):
     """Run scan in background. Post to callback_url (n8n) or Discord."""
     print("[scan] Started", flush=True)
     try:
-        output, exit_code = run_scan(manifest_repo, git_token)
-        header = "=== K8s Manifest Trivy Config Scan ===\n"
+        output, exit_code = run_scan(manifest_repo, git_token, scan_target)
+        header = "=== K8s Cluster Trivy Scan ===\n" if scan_target == "cluster" else "=== K8s Manifest Trivy Config Scan ===\n"
         full = header + (output or "No output")
 
         if callback_url:
@@ -105,19 +108,22 @@ def health():
 
 @app.route("/scan", methods=["POST", "GET"])
 def scan():
-    """Trigger scan. Body: { callback_url? | discord_webhook?, manifest_repo?, git_token? }.
+    """Trigger scan. Body: { callback_url? | discord_webhook?, manifest_repo?, git_token?, scan_target? }.
+    scan_target: 'cluster' = scan live K8s cluster (trivy k8s), 'manifest' = scan repo (default).
     callback_url: n8n webhook - trivy-scan POST kết quả vào đây, n8n gửi tiếp lên Discord."""
     webhook = DISCORD_WEBHOOK
     callback_url = None
     manifest_repo = MANIFEST_REPO
     git_token = GIT_TOKEN
 
+    scan_target = None
     if request.is_json:
         data = request.get_json() or {}
         callback_url = data.get("callback_url")
         webhook = data.get("discord_webhook") or webhook
         manifest_repo = data.get("manifest_repo") or manifest_repo
         git_token = data.get("git_token") or git_token
+        scan_target = data.get("scan_target")
 
     if not callback_url and not webhook:
         return jsonify({"error": "Need callback_url or discord_webhook/DISCORD_WEBHOOK_URL"}), 400
@@ -129,6 +135,7 @@ def scan():
             "callback_url": callback_url,
             "manifest_repo": manifest_repo,
             "git_token": git_token,
+            "scan_target": scan_target,
         },
     ).start()
 
