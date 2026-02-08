@@ -227,11 +227,9 @@ if __name__ == "__main__":
         os.environ.get("TRIVY_CRON", "").strip().lower() in ("1", "true", "yes")
     )
     if run_cron:
+        # Chỉ scan và in kết quả ra log (CronJob). Không bắt buộc Discord/callback.
         callback_url = os.environ.get("CALLBACK_URL", "").strip() or None
         webhook = DISCORD_WEBHOOK or None
-        if not callback_url and not webhook:
-            print("[cron] Error: set DISCORD_WEBHOOK_URL or CALLBACK_URL", flush=True)
-            sys.exit(1)
         run_scan_and_notify(
             webhook_url=webhook if not callback_url else None,
             callback_url=callback_url,
