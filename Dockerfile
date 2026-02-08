@@ -5,15 +5,12 @@ RUN apk add --no-cache \
     git \
     curl \
     python3 \
-    py3-pip \
+    py3-flask \
     kubectl \
     helm
 
 # Install Trivy
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-
-# Install Flask
-RUN pip3 install --no-cache-dir flask
 
 WORKDIR /app
 
