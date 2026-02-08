@@ -23,14 +23,21 @@ def main():
         print("No misconfigurations found.")
         return
 
-    # Path + tên file: harbor.yaml -> apps/playground/harbor/harbor.yaml
+    # Path + tên file:
+    # - playground-harbor.yaml -> apps/playground/harbor/playground-harbor.yaml
+    # - infra-ingress-nginx.yaml -> apps/infra/ingress-nginx/infra-ingress-nginx.yaml
     def target_to_path(target: str) -> str:
         if not target:
             return "unknown"
         parts = target.split("/")
-        filename = parts[-1]  # harbor.yaml
-        base = filename.replace(".yaml", "").replace(".yml", "")
-        return f"apps/playground/{base}/{filename}"
+        filename = parts[-1]
+        stem = filename.replace(".yaml", "").replace(".yml", "")
+        if "-" in stem:
+            first, *rest = stem.split("-", 1)
+            if first in ("playground", "infra"):
+                env, app = first, rest[0] if rest else stem
+                return f"apps/{env}/{app}/{filename}"
+        return f"apps/playground/{stem}/{filename}"
 
     rows = []
     for r in results:

@@ -6,8 +6,6 @@ WORK_DIR="${WORK_DIR:-/tmp/scan}"
 MANIFEST_REPO="${MANIFEST_REPO:-https://github.com/Hoangvu75/k8s_manifest.git}"
 GIT_TOKEN="${GIT_TOKEN:-}"
 
-APPS="mbs-discord-bot n8n jenkins harbor redis argocd"
-
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 
@@ -22,16 +20,20 @@ git clone --depth 1 "$REPO_URL" k8s_manifest 2>/dev/null
 
 cd k8s_manifest
 
-# Render mỗi app ra file riêng để Trivy báo app name (harbor.yaml) thay vì rendered.yaml
+# Render toàn bộ apps (playground + infra) ra file riêng
+# Format: {env}-{app}.yaml (vd: playground-harbor.yaml, infra-ingress-nginx.yaml)
 RENDERED_DIR="$WORK_DIR/rendered"
 mkdir -p "$RENDERED_DIR"
 rm -f "$RENDERED_DIR"/*.yaml 2>/dev/null || true
 
-for app in $APPS; do
-  path="apps/playground/$app"
-  if [ -d "$path" ]; then
-    echo "Rendering $app..."
-    kubectl kustomize --enable-helm "$path" 2>/dev/null > "$RENDERED_DIR/$app.yaml" || true
+for env in playground infra; do
+  if [ -d "apps/$env" ]; then
+    for app_dir in apps/"$env"/*; do
+      [ -d "$app_dir" ] || continue
+      app=$(basename "$app_dir")
+      echo "Rendering $env/$app..."
+      kubectl kustomize --enable-helm "$app_dir" 2>/dev/null > "$RENDERED_DIR/${env}-${app}.yaml" || true
+    done
   fi
 done
 
