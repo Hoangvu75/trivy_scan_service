@@ -71,10 +71,15 @@ def post_to_discord(content: str, webhook_url: str):
 
 def run_scan_and_notify(webhook_url, manifest_repo=None, git_token=None):
     """Run scan in background and post to Discord."""
-    output, _ = run_scan(manifest_repo, git_token)
-    header = "=== K8s Manifest Trivy Config Scan ===\n"
-    full = header + (output or "No output")
-    post_to_discord(full, webhook_url)
+    print("[scan] Started", flush=True)
+    try:
+        output, exit_code = run_scan(manifest_repo, git_token)
+        header = "=== K8s Manifest Trivy Config Scan ===\n"
+        full = header + (output or "No output")
+        ok = post_to_discord(full, webhook_url)
+        print(f"[scan] Done (exit={exit_code}, discord={'ok' if ok else 'fail'})", flush=True)
+    except Exception as e:
+        print(f"[scan] Error: {e}", flush=True)
 
 
 @app.route("/health", methods=["GET"])
