@@ -23,12 +23,14 @@ def main():
         print("No misconfigurations found.")
         return
 
-    # Path trong k8s_manifest: harbor.yaml -> apps/playground/harbor
+    # Path + tên file: harbor.yaml -> apps/playground/harbor/harbor.yaml
     def target_to_path(target: str) -> str:
         if not target:
             return "unknown"
-        base = target.split("/")[-1].replace(".yaml", "")
-        return f"apps/playground/{base}"
+        parts = target.split("/")
+        filename = parts[-1]  # harbor.yaml
+        base = filename.replace(".yaml", "").replace(".yml", "")
+        return f"apps/playground/{base}/{filename}"
 
     rows = []
     for r in results:
