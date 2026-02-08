@@ -23,7 +23,7 @@ GIT_TOKEN = os.environ.get("GIT_TOKEN", "")
 
 def run_scan(manifest_repo=None, git_token=None, scan_target=None):
     """Run trivy scan and return (output, exit_code).
-    Log từ scan.sh được stream ra stdout (thấy khi kubectl logs -f) và vẫn gửi đủ vào callback."""
+    scan_target: 'cluster' = trivy k8s (live cluster), 'manifest' or None = repo manifest."""
     env = os.environ.copy()
     env["MANIFEST_REPO"] = manifest_repo or MANIFEST_REPO
     env["GIT_TOKEN"] = git_token or GIT_TOKEN
@@ -32,34 +32,19 @@ def run_scan(manifest_repo=None, git_token=None, scan_target=None):
         env["SCAN_TARGET"] = scan_target
 
     try:
-        proc = subprocess.Popen(
+        result = subprocess.run(
             ["/app/scan.sh"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            capture_output=True,
             text=True,
+            timeout=300,
             env=env,
             cwd="/app",
         )
-        lines = []
-
-        def read_stream():
-            for line in proc.stdout:
-                line = line.rstrip()
-                if line:
-                    lines.append(line)
-                    print(f"[scan] {line}", flush=True)
-
-        reader = threading.Thread(target=read_stream, daemon=True)
-        reader.start()
-        try:
-            proc.wait(timeout=300)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            reader.join(timeout=2)
-            return "Scan timed out after 5 minutes", 1
-        reader.join(timeout=5)
-        output = "\n".join(lines)
-        return output.strip(), proc.returncode if proc.returncode is not None else 0
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        return (stdout + stderr).strip(), result.returncode
+    except subprocess.TimeoutExpired:
+        return "Scan timed out after 5 minutes", 1
     except Exception as e:
         return str(e), 1
 
