@@ -46,7 +46,7 @@ pipeline {
                     sh """
                       trivy fs --no-progress --exit-code 0 . 2>&1 | tee trivy-fs-full.log
                       awk '
-                        / \\(npm\\)\$| \\(node-pkg\\)\$| \\(alpine\\)\$| \\(python\\)\$/ {p=1}
+                        / \\(npm\\)\$| \\(node-pkg\\)\$| \\(alpine\\)\$| \\(python\\)\$| \\(pip\\)\$| \\(pipenv\\)\$/ {p=1}
                         /^=+\$/ {if(p) print; next}
                         /^Total: [0-9]+ \\(UNKNOWN:/ {p=1}
                         p {print}
