@@ -46,19 +46,10 @@ def run_scan(manifest_repo=None, git_token=None):
         return str(e), 1
 
 
-def post_to_discord(content: str, webhook_url: str):
-    """Post content to Discord webhook. Returns success bool."""
-    if not webhook_url:
-        print("[discord] No webhook URL (check DISCORD_WEBHOOK_URL env)", flush=True)
-        return False
-
-    if len(content) > 1900:
-        content = content[:1900] + "\n... (truncated)"
-
-    payload = {"content": f"```\n{content}\n```"}
-
+def _post_json(url: str, payload: dict) -> bool:
+    """POST JSON to URL. Returns success bool."""
     req = urllib.request.Request(
-        webhook_url,
+        url,
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -67,22 +58,39 @@ def post_to_discord(content: str, webhook_url: str):
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.status in (200, 204)
     except urllib.error.HTTPError as e:
-        print(f"[discord] HTTP {e.code}: {e.read().decode()[:200]}", flush=True)
+        print(f"[post] HTTP {e.code}: {e.read().decode()[:200]}", flush=True)
         return False
     except Exception as e:
-        print(f"[discord] Error: {e}", flush=True)
+        print(f"[post] Error: {e}", flush=True)
         return False
 
 
-def run_scan_and_notify(webhook_url, manifest_repo=None, git_token=None):
-    """Run scan in background and post to Discord."""
+def post_to_discord(content: str, webhook_url: str) -> bool:
+    """Post content to Discord webhook."""
+    if not webhook_url:
+        print("[discord] No webhook URL", flush=True)
+        return False
+    if len(content) > 1900:
+        content = content[:1900] + "\n... (truncated)"
+    return _post_json(webhook_url, {"content": f"```\n{content}\n```"})
+
+
+def run_scan_and_notify(webhook_url=None, callback_url=None, manifest_repo=None, git_token=None):
+    """Run scan in background. Post to callback_url (n8n) or Discord."""
     print("[scan] Started", flush=True)
     try:
         output, exit_code = run_scan(manifest_repo, git_token)
         header = "=== K8s Manifest Trivy Config Scan ===\n"
         full = header + (output or "No output")
-        ok = post_to_discord(full, webhook_url)
-        print(f"[scan] Done (exit={exit_code}, discord={'ok' if ok else 'fail'})", flush=True)
+
+        if callback_url:
+            ok = _post_json(callback_url, {"content": full})
+            print(f"[scan] Done (exit={exit_code}, callback={'ok' if ok else 'fail'})", flush=True)
+        elif webhook_url:
+            ok = post_to_discord(full, webhook_url)
+            print(f"[scan] Done (exit={exit_code}, discord={'ok' if ok else 'fail'})", flush=True)
+        else:
+            print(f"[scan] Done (exit={exit_code}, no destination)", flush=True)
     except Exception as e:
         print(f"[scan] Error: {e}", flush=True)
 
@@ -94,27 +102,34 @@ def health():
 
 @app.route("/scan", methods=["POST", "GET"])
 def scan():
-    """Trigger scan. Optionally: body { discord_webhook?, manifest_repo?, git_token? }."""
+    """Trigger scan. Body: { callback_url? | discord_webhook?, manifest_repo?, git_token? }.
+    callback_url: n8n webhook - trivy-scan POST kết quả vào đây, n8n gửi tiếp lên Discord."""
     webhook = DISCORD_WEBHOOK
+    callback_url = None
     manifest_repo = MANIFEST_REPO
     git_token = GIT_TOKEN
 
     if request.is_json:
         data = request.get_json() or {}
+        callback_url = data.get("callback_url")
         webhook = data.get("discord_webhook") or webhook
         manifest_repo = data.get("manifest_repo") or manifest_repo
         git_token = data.get("git_token") or git_token
 
-    if not webhook:
-        return jsonify({"error": "No discord_webhook in body or DISCORD_WEBHOOK_URL env"}), 400
+    if not callback_url and not webhook:
+        return jsonify({"error": "Need callback_url or discord_webhook/DISCORD_WEBHOOK_URL"}), 400
 
-    # Run scan async so we return 200 quickly (GitHub/n8n webhooks often timeout)
     threading.Thread(
         target=run_scan_and_notify,
-        kwargs={"webhook_url": webhook, "manifest_repo": manifest_repo, "git_token": git_token},
+        kwargs={
+            "webhook_url": webhook if not callback_url else None,
+            "callback_url": callback_url,
+            "manifest_repo": manifest_repo,
+            "git_token": git_token,
+        },
     ).start()
 
-    return jsonify({"status": "scan_started", "message": "Results will be posted to Discord"}), 200
+    return jsonify({"status": "scan_started", "message": "Results will be posted to callback/Discord"}), 200
 
 
 if __name__ == "__main__":
