@@ -221,8 +221,12 @@ def scan():
 
 
 if __name__ == "__main__":
-    # Chế độ cron: chạy scan 1 lần, gửi Discord/callback rồi thoát (dùng cho CronJob)
-    if len(sys.argv) > 1 and sys.argv[1] == "cron":
+    # Chế độ cron: chạy scan 1 lần, gửi Discord/callback rồi thoát (dùng cho CronJob).
+    # Bật bằng: argv "cron" HOẶC env TRIVY_CRON=1 (để Job không cần override CMD vẫn chạy scan).
+    run_cron = (len(sys.argv) > 1 and sys.argv[1] == "cron") or (
+        os.environ.get("TRIVY_CRON", "").strip().lower() in ("1", "true", "yes")
+    )
+    if run_cron:
         callback_url = os.environ.get("CALLBACK_URL", "").strip() or None
         webhook = DISCORD_WEBHOOK or None
         if not callback_url and not webhook:
