@@ -1,40 +1,29 @@
 #!/bin/sh
-# Chỉ quét cluster K8s trực tiếp (trivy k8s) — misconfig + vuln, đầy đủ.
-# Cần chạy trong cluster với ServiceAccount có quyền đọc (RBAC).
+# Quét cluster K8s trực tiếp (trivy k8s). Mọi thứ chạy trong pod CronJob, không tạo namespace/Job.
+# --disable-node-collector: không tạo trivy-temp + node-collector Job, chỉ đọc API và quét.
 set -e
 
 WORK_DIR="${WORK_DIR:-/tmp/scan}"
 mkdir -p "$WORK_DIR"
-# Trivy cache (container root read-only, dùng /tmp)
 export TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-/tmp/trivy-cache}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/trivy-cache}"
 mkdir -p "$TRIVY_CACHE_DIR"
 
-# Dọn namespace tạm từ lần chạy trước (tránh "job already exists" / "being terminated")
-kubectl delete namespace trivy-temp --ignore-not-found=true --timeout=15s 2>/dev/null || true
-# Chờ namespace xóa hẳn (Terminating có thể mất vài giây)
-n=0
-while kubectl get namespace trivy-temp 2>/dev/null && [ "$n" -lt 45 ]; do
-  sleep 1
-  n=$((n + 1))
-done
-
 echo "=== K8s Cluster Trivy Scan (live) ==="
-# TRIVY_SKIP_IMAGES=1: chỉ misconfig (~1-2 phút). Để trống: misconfig + vuln (~10-15 phút).
+# TRIVY_SKIP_IMAGES=1: chỉ misconfig. Để trống: misconfig + vuln (quét image, lâu hơn).
 if [ -n "$TRIVY_SKIP_IMAGES" ] && [ "$TRIVY_SKIP_IMAGES" != "0" ]; then
-  echo "Running Trivy k8s (misconfig only, skip images)..."
-  TRIVY_EXTRA="--scanners misconfig --skip-images"
+  echo "Running Trivy k8s (misconfig only, skip images, no node collector)..."
+  TRIVY_EXTRA="--scanners misconfig --skip-images --disable-node-collector"
 else
-  echo "Running Trivy k8s (misconfig + vuln, full scan)..."
-  TRIVY_EXTRA="--scanners misconfig,vuln"
+  echo "Running Trivy k8s (misconfig + vuln, no node collector)..."
+  TRIVY_EXTRA="--scanners misconfig,vuln --disable-node-collector"
 fi
 TRIVY_K8S="$WORK_DIR/trivy-k8s.json"
 
 if trivy k8s $TRIVY_EXTRA --exit-code 0 -f json -o "$TRIVY_K8S" 2>&1; then
   :
 else
-  # Fallback: chỉ misconfig nếu vuln quá nặng hoặc lỗi
-  trivy k8s --scanners misconfig --skip-images --exit-code 0 -f json -o "$TRIVY_K8S" 2>&1 || true
+  trivy k8s --scanners misconfig --skip-images --disable-node-collector --exit-code 0 -f json -o "$TRIVY_K8S" 2>&1 || true
 fi
 
 if [ -f "$TRIVY_K8S" ]; then
