@@ -5,6 +5,10 @@ set -e
 
 WORK_DIR="${WORK_DIR:-/tmp/scan}"
 mkdir -p "$WORK_DIR"
+# Trivy cache (container root read-only, dùng /tmp)
+export TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-/tmp/trivy-cache}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/trivy-cache}"
+mkdir -p "$TRIVY_CACHE_DIR"
 
 echo "=== K8s Cluster Trivy Scan (live) ==="
 echo "Running Trivy k8s (misconfig + vuln, full scan)..."
