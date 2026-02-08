@@ -19,8 +19,9 @@ def main():
         print(f"Error reading {path}: {e}", file=sys.stderr)
         sys.exit(1)
 
+    resources = data.get("Misconfigurations", [])
     rows = []
-    for resource in data.get("Misconfigurations", []):
+    for resource in resources:
         ns = resource.get("Namespace", "")
         kind = resource.get("Kind", "")
         name = resource.get("Name", "")
@@ -38,8 +39,17 @@ def main():
                 loc = f"{start}-{end}" if start and end else str(start) if start else ""
                 rows.append((resource_path, mid, severity, loc, title))
 
+    # Luôn in tóm tắt: đã quét bao nhiêu resource, bao nhiêu findings (để so sánh với scan repo)
+    kind_counts = {}
+    for r in resources:
+        k = r.get("Kind", "?")
+        kind_counts[k] = kind_counts.get(k, 0) + 1
+    summary = ", ".join(f"{k}:{v}" for k, v in sorted(kind_counts.items()))
+    print(f"Resources scanned: {len(resources)} ({summary})")
+    print(f"Misconfigurations found: {len(rows)}")
+
     if not rows:
-        print("No misconfigurations found.")
+        print("No misconfigurations found (cluster objects may pass checks or differ from repo YAML).")
         return
 
     col_widths = [
