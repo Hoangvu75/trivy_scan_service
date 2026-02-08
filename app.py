@@ -84,7 +84,10 @@ def run_scan_and_notify(webhook_url=None, callback_url=None, manifest_repo=None,
         full = header + (output or "No output")
 
         if callback_url:
-            ok = _post_json(callback_url, {"content": full})
+            payload = {"content": full}
+            if DISCORD_WEBHOOK:
+                payload["discord_webhook"] = DISCORD_WEBHOOK
+            ok = _post_json(callback_url, payload)
             print(f"[scan] Done (exit={exit_code}, callback={'ok' if ok else 'fail'})", flush=True)
         elif webhook_url:
             ok = post_to_discord(full, webhook_url)
