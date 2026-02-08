@@ -20,25 +20,8 @@ git clone --depth 1 "$REPO_URL" k8s_manifest 2>/dev/null
 
 cd k8s_manifest
 
-# Render toàn bộ apps: duyệt apps/*/*, format: {env}-{app}.yaml
-# Ví dụ: playground-harbor.yaml, infra-ingress-nginx.yaml, prod-api.yaml
-RENDERED_DIR="$WORK_DIR/rendered"
-mkdir -p "$RENDERED_DIR"
-rm -f "$RENDERED_DIR"/*.yaml 2>/dev/null || true
-
-for env_dir in apps/*/; do
-  [ -d "$env_dir" ] || continue
-  env=$(basename "$env_dir")
-  for app_dir in "$env_dir"*/; do
-    [ -d "$app_dir" ] || continue
-    app=$(basename "$app_dir")
-    echo "Rendering $env/$app..."
-    kubectl kustomize --enable-helm "$app_dir" 2>/dev/null > "$RENDERED_DIR/${env}-${app}.yaml" || true
-  done
-done
-
-# Scan - output JSON, format thành table qua Python
-echo "Running Trivy config scan..."
+# Quét trực tiếp thư mục nguồn apps/ để Trivy báo đúng tên file (config.yaml, chart/values.yaml, ...)
+echo "Running Trivy config scan (source: apps/)..."
 TRIVY_JSON="$WORK_DIR/trivy.json"
-trivy config --exit-code 0 -f json -o "$TRIVY_JSON" "$RENDERED_DIR" 2>/dev/null || trivy config -f json -o "$TRIVY_JSON" "$RENDERED_DIR" 2>/dev/null
+trivy config --exit-code 0 -f json -o "$TRIVY_JSON" apps/ 2>/dev/null || trivy config -f json -o "$TRIVY_JSON" apps/ 2>/dev/null
 python3 /app/format_trivy_config.py "$TRIVY_JSON" 2>/dev/null || cat "$TRIVY_JSON"

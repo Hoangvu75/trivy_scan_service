@@ -23,23 +23,22 @@ def main():
         print("No misconfigurations found.")
         return
 
-    # Path app trong k8s_manifest. Chuẩn: {env}-{app}.yaml -> apps/{env}/{app}
-    # Áp dụng cho mọi env: playground, infra, prod, staging, ...
-    def target_to_path(target: str) -> str:
+    # Target = đường dẫn file thật trong repo (vd: apps/playground/harbor/chart/values.yaml)
+    # Chuẩn hóa: bỏ prefix absolute path, đảm bảo bắt đầu bằng apps/
+    def normalize_path(target: str) -> str:
         if not target:
             return "unknown"
-        parts = target.split("/")
-        filename = parts[-1]
-        stem = filename.replace(".yaml", "").replace(".yml", "")
-        if "-" in stem:
-            env, app = stem.split("-", 1)
-            return f"apps/{env}/{app}"
-        return f"apps/playground/{stem}"
+        path = target.replace("\\", "/")
+        if "apps/" in path:
+            path = path[path.index("apps/"):]
+        elif not path.startswith("apps/"):
+            path = "apps/" + path.lstrip("/") if path != "unknown" else path
+        return path
 
     rows = []
     for r in results:
         target = r.get("Target", "")
-        file_path = target_to_path(target)
+        file_path = normalize_path(target)
         for m in r.get("Misconfigurations", []):
             mid = m.get("ID", "")
             severity = m.get("Severity", "")
@@ -67,7 +66,7 @@ def main():
     w0, w1, w2, w3, w4 = col_widths
 
     sep = "+" + "-" * (w0 + 2) + "+" + "-" * (w1 + 2) + "+" + "-" * (w2 + 2) + "+" + "-" * (w3 + 2) + "+" + "-" * (w4 + 2) + "+"
-    header = f"| {'Path (k8s_manifest)'[:w0].ljust(w0)} | {'ID'.ljust(w1)} | {'Severity'.ljust(w2)} | {'Lines'.ljust(w3)} | {'Title'.ljust(w4)} |"
+    header = f"| {'File (k8s_manifest)'[:w0].ljust(w0)} | {'ID'.ljust(w1)} | {'Severity'.ljust(w2)} | {'Lines'.ljust(w3)} | {'Title'.ljust(w4)} |"
 
     lines = [
         "Report Summary (Misconfigurations)",
