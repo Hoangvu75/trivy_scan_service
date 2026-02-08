@@ -17,15 +17,26 @@ def normalize_path(target: str) -> str:
     return path
 
 def rendered_target_to_path(target: str) -> str:
-    """Target từ quét render: env-app.yaml -> apps/env/app (path app, không có tên file)."""
+    """Target từ quét render:
+    - .../rendered_split/playground/harbor/Deployment-harbor-core.yaml -> apps/playground/harbor/Deployment-harbor-core.yaml
+    - (fallback) env-app.yaml -> apps/env/app
+    """
     if not target:
         return "unknown"
-    parts = target.replace("\\", "/").split("/")
+    path = target.replace("\\", "/")
+    if "rendered_split" in path:
+        idx = path.index("rendered_split") + len("rendered_split")
+        if idx < len(path) and path[idx] == "/":
+            idx += 1
+        return "apps/" + path[idx:].lstrip("/")
+    if "rendered/" in path:
+        path = path[path.index("rendered/") + len("rendered/"):]
+    parts = path.split("/")
     filename = parts[-1]
     stem = filename.replace(".yaml", "").replace(".yml", "")
     if "-" in stem:
-        env, app = stem.split("-", 1)
-        return f"apps/{env}/{app}"
+        env, rest = stem.split("-", 1)
+        return f"apps/{env}/{rest}"
     return f"apps/playground/{stem}"
 
 def collect_rows(results, path_fn):
