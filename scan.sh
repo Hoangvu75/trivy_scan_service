@@ -35,6 +35,6 @@ for app in $APPS; do
   fi
 done
 
-# Scan
+# Scan - báo cáo đầy đủ, không tóm tắt (-q bỏ để có full output)
 echo "Running Trivy config scan..."
-trivy config -q --exit-code 0 -f table "$RENDERED" 2>&1 || trivy config -q -f table "$RENDERED" 2>&1
+trivy config --exit-code 0 -f table "$RENDERED" 2>&1 || trivy config -f table "$RENDERED" 2>&1
