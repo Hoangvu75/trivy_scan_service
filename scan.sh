@@ -18,23 +18,25 @@ if [ -n "$GIT_TOKEN" ]; then
 else
   REPO_URL="$MANIFEST_REPO"
 fi
-git clone --depth 1 "$REPO_URL" k8s_manifest
+git clone --depth 1 "$REPO_URL" k8s_manifest 2>/dev/null
 
 cd k8s_manifest
 
-# Render each app and concatenate
-RENDERED="/tmp/rendered.yaml"
-: > "$RENDERED"
+# Render mỗi app ra file riêng để Trivy báo app name (harbor.yaml) thay vì rendered.yaml
+RENDERED_DIR="$WORK_DIR/rendered"
+mkdir -p "$RENDERED_DIR"
+rm -f "$RENDERED_DIR"/*.yaml 2>/dev/null || true
 
 for app in $APPS; do
   path="apps/playground/$app"
   if [ -d "$path" ]; then
     echo "Rendering $app..."
-    kubectl kustomize --enable-helm "$path" 2>/dev/null >> "$RENDERED" || true
-    echo "---" >> "$RENDERED"
+    kubectl kustomize --enable-helm "$path" 2>/dev/null > "$RENDERED_DIR/$app.yaml" || true
   fi
 done
 
-# Scan - báo cáo đầy đủ, không tóm tắt (-q bỏ để có full output)
+# Scan - output JSON, format thành table qua Python
 echo "Running Trivy config scan..."
-trivy config --exit-code 0 -f table "$RENDERED" 2>&1 || trivy config -f table "$RENDERED" 2>&1
+TRIVY_JSON="$WORK_DIR/trivy.json"
+trivy config --exit-code 0 -f json -o "$TRIVY_JSON" "$RENDERED_DIR" 2>/dev/null || trivy config -f json -o "$TRIVY_JSON" "$RENDERED_DIR" 2>/dev/null
+python3 /app/format_trivy_config.py "$TRIVY_JSON" 2>/dev/null || cat "$TRIVY_JSON"

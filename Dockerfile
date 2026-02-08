@@ -16,6 +16,7 @@ WORKDIR /app
 
 COPY scan.sh /app/scan.sh
 COPY app.py /app/app.py
+COPY format_trivy_config.py /app/format_trivy_config.py
 
 RUN chmod +x /app/scan.sh
 
