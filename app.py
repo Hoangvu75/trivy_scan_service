@@ -49,6 +49,7 @@ def run_scan(manifest_repo=None, git_token=None):
 def post_to_discord(content: str, webhook_url: str):
     """Post content to Discord webhook. Returns success bool."""
     if not webhook_url:
+        print("[discord] No webhook URL (check DISCORD_WEBHOOK_URL env)", flush=True)
         return False
 
     if len(content) > 1900:
@@ -65,7 +66,11 @@ def post_to_discord(content: str, webhook_url: str):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.status in (200, 204)
-    except Exception:
+    except urllib.error.HTTPError as e:
+        print(f"[discord] HTTP {e.code}: {e.read().decode()[:200]}", flush=True)
+        return False
+    except Exception as e:
+        print(f"[discord] Error: {e}", flush=True)
         return False
 
 
