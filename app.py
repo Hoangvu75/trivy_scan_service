@@ -7,7 +7,6 @@ import urllib.request
 import urllib.error
 import json
 import threading
-
 try:
     from flask import Flask, request, jsonify
 except ImportError:
@@ -21,9 +20,32 @@ MANIFEST_REPO = os.environ.get("MANIFEST_REPO", "https://github.com/Hoangvu75/k8
 GIT_TOKEN = os.environ.get("GIT_TOKEN", "")
 
 
+def _read_stream_to_list(pipe_fd, lines_list):
+    """Đọc từ pipe đến EOF, tách dòng, in [scan] ... và gom vào lines_list."""
+    buf = ""
+    while True:
+        try:
+            chunk = os.read(pipe_fd, 4096).decode("utf-8", errors="replace")
+        except (OSError, AttributeError):
+            break
+        if not chunk:
+            break
+        buf += chunk
+        while "\n" in buf or "\r" in buf:
+            sep = "\n" if "\n" in buf else "\r"
+            line, buf = buf.split(sep, 1)
+            line = line.rstrip()
+            if line:
+                lines_list.append(line)
+                print(f"[scan] {line}", flush=True)
+    if buf.rstrip():
+        lines_list.append(buf.rstrip())
+        print(f"[scan] {buf.rstrip()}", flush=True)
+
+
 def run_scan(manifest_repo=None, git_token=None, scan_target=None):
     """Run trivy scan and return (output, exit_code).
-    scan_target: 'cluster' = trivy k8s (live cluster), 'manifest' or None = repo manifest."""
+    Log stream ra stdout (kubectl logs -f) theo từng dòng trong lúc chạy."""
     env = os.environ.copy()
     env["MANIFEST_REPO"] = manifest_repo or MANIFEST_REPO
     env["GIT_TOKEN"] = git_token or GIT_TOKEN
@@ -31,21 +53,74 @@ def run_scan(manifest_repo=None, git_token=None, scan_target=None):
     if scan_target in ("cluster", "manifest"):
         env["SCAN_TARGET"] = scan_target
 
+    proc = None
     try:
-        result = subprocess.run(
-            ["/app/scan.sh"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env=env,
-            cwd="/app",
-        )
-        stdout = result.stdout or ""
-        stderr = result.stderr or ""
-        return (stdout + stderr).strip(), result.returncode
-    except subprocess.TimeoutExpired:
-        return "Scan timed out after 5 minutes", 1
+        # Dùng PTY để process con line-buffer (Trivy/shell in ra ngay từng dòng)
+        try:
+            import pty
+            master, slave = pty.openpty()
+        except ImportError:
+            # pty không có (vd. Windows); fallback dùng pipe
+            master = slave = None
+        else:
+            proc = subprocess.Popen(
+                ["/app/scan.sh"],
+                stdout=slave,
+                stderr=slave,
+                stdin=slave,
+                env=env,
+                cwd="/app",
+            )
+            os.close(slave)
+            lines = []
+            reader = threading.Thread(
+                target=lambda: _read_stream_to_list(master, lines),
+                daemon=True,
+            )
+            reader.start()
+            try:
+                proc.wait(timeout=900)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                reader.join(timeout=3)
+                os.close(master)
+                return "Scan timed out after 15 minutes", 1
+            reader.join(timeout=5)
+            os.close(master)
+            output = "\n".join(lines)
+            return output.strip(), (proc.returncode if proc.returncode is not None else 0)
+
+        if master is None:
+            # Fallback: pipe (có thể buffer, nhưng vẫn in khi có dữ liệu)
+            proc = subprocess.Popen(
+                ["/app/scan.sh"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=False,
+                env=env,
+                cwd="/app",
+            )
+            lines = []
+            reader = threading.Thread(
+                target=lambda: _read_stream_to_list(proc.stdout.fileno(), lines),
+                daemon=True,
+            )
+            reader.start()
+            try:
+                proc.wait(timeout=900)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                reader.join(timeout=3)
+                return "Scan timed out after 15 minutes", 1
+            reader.join(timeout=5)
+            output = "\n".join(lines)
+            return output.strip(), (proc.returncode if proc.returncode is not None else 0)
     except Exception as e:
+        if proc:
+            try:
+                proc.kill()
+            except Exception:
+                pass
         return str(e), 1
 
 
@@ -80,7 +155,7 @@ def post_to_discord(content: str, webhook_url: str) -> bool:
 
 def run_scan_and_notify(webhook_url=None, callback_url=None, manifest_repo=None, git_token=None, scan_target=None):
     """Run scan in background. Post to callback_url (n8n) or Discord."""
-    print("[scan] Started", flush=True)
+    print("[scan] Started (streaming log below)", flush=True)
     try:
         output, exit_code = run_scan(manifest_repo, git_token, scan_target)
         header = "=== K8s Cluster Trivy Scan ===\n" if scan_target == "cluster" else "=== K8s Manifest Trivy Config Scan ===\n"

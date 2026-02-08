@@ -11,11 +11,17 @@ export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/trivy-cache}"
 mkdir -p "$TRIVY_CACHE_DIR"
 
 echo "=== K8s Cluster Trivy Scan (live) ==="
-echo "Running Trivy k8s (misconfig + vuln, full scan)..."
+# TRIVY_SKIP_IMAGES=1: chỉ misconfig (~1-2 phút). Để trống: misconfig + vuln (~10-15 phút).
+if [ -n "$TRIVY_SKIP_IMAGES" ] && [ "$TRIVY_SKIP_IMAGES" != "0" ]; then
+  echo "Running Trivy k8s (misconfig only, skip images)..."
+  TRIVY_EXTRA="--scanners misconfig --skip-images"
+else
+  echo "Running Trivy k8s (misconfig + vuln, full scan)..."
+  TRIVY_EXTRA="--scanners misconfig,vuln"
+fi
 TRIVY_K8S="$WORK_DIR/trivy-k8s.json"
 
-# misconfig + vuln (quét cả image), exit-code 0 để có finding vẫn không thoát lỗi
-if trivy k8s --scanners misconfig,vuln --exit-code 0 -f json -o "$TRIVY_K8S" 2>&1; then
+if trivy k8s $TRIVY_EXTRA --exit-code 0 -f json -o "$TRIVY_K8S" 2>&1; then
   :
 else
   # Fallback: chỉ misconfig nếu vuln quá nặng hoặc lỗi
