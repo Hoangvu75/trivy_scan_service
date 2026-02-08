@@ -1,44 +1,38 @@
 #!/usr/bin/env python3
-"""Format Trivy config JSON output thành table dễ đọc (giống Jenkins report)."""
+"""Format Trivy config JSON output thành table dễ đọc (giống Jenkins report).
+   Có thể nhận 2 file: trivy-source.json (quét nguồn -> tên file) + trivy-rendered.json (quét render -> đủ findings).
+"""
 import json
 import sys
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: format_trivy_config.py <trivy.json>", file=sys.stderr)
-        sys.exit(1)
+def normalize_path(target: str) -> str:
+    """Target từ quét nguồn: đường dẫn file thật (apps/.../file.yaml)."""
+    if not target:
+        return "unknown"
+    path = target.replace("\\", "/")
+    if "apps/" in path:
+        path = path[path.index("apps/"):]
+    elif not path.startswith("apps/"):
+        path = "apps/" + path.lstrip("/") if path != "unknown" else path
+    return path
 
-    path = sys.argv[1]
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError) as e:
-        print(f"Error reading {path}: {e}", file=sys.stderr)
-        sys.exit(1)
+def rendered_target_to_path(target: str) -> str:
+    """Target từ quét render: env-app.yaml -> apps/env/app (path app, không có tên file)."""
+    if not target:
+        return "unknown"
+    parts = target.replace("\\", "/").split("/")
+    filename = parts[-1]
+    stem = filename.replace(".yaml", "").replace(".yml", "")
+    if "-" in stem:
+        env, app = stem.split("-", 1)
+        return f"apps/{env}/{app}"
+    return f"apps/playground/{stem}"
 
-    results = data.get("Results", [])
-    if not results and isinstance(data, list):
-        results = data
-    if not results:
-        print("No misconfigurations found.")
-        return
-
-    # Target = đường dẫn file thật trong repo (vd: apps/playground/harbor/chart/values.yaml)
-    # Chuẩn hóa: bỏ prefix absolute path, đảm bảo bắt đầu bằng apps/
-    def normalize_path(target: str) -> str:
-        if not target:
-            return "unknown"
-        path = target.replace("\\", "/")
-        if "apps/" in path:
-            path = path[path.index("apps/"):]
-        elif not path.startswith("apps/"):
-            path = "apps/" + path.lstrip("/") if path != "unknown" else path
-        return path
-
+def collect_rows(results, path_fn):
     rows = []
     for r in results:
         target = r.get("Target", "")
-        file_path = normalize_path(target)
+        file_path = path_fn(target)
         for m in r.get("Misconfigurations", []):
             mid = m.get("ID", "")
             severity = m.get("Severity", "")
@@ -50,6 +44,27 @@ def main():
             end = meta.get("EndLine", "")
             loc = f"{start}-{end}" if start and end else str(start) if start else ""
             rows.append((file_path, mid, severity, loc, title))
+    return rows
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: format_trivy_config.py <trivy-source.json> [trivy-rendered.json]", file=sys.stderr)
+        sys.exit(1)
+
+    rows = []
+    for i, path in enumerate(sys.argv[1:]):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Warning: skip {path}: {e}", file=sys.stderr)
+            continue
+        results = data.get("Results", [])
+        if not results and isinstance(data, list):
+            results = data
+        # File đầu = nguồn (tên file thật), file thứ hai = render (path app)
+        path_fn = normalize_path if i == 0 else rendered_target_to_path
+        rows.extend(collect_rows(results, path_fn))
 
     if not rows:
         print("No misconfigurations found.")
