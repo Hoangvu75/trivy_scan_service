@@ -19,11 +19,12 @@ def normalize_path(target: str) -> str:
 def rendered_target_to_path(target: str) -> str:
     """Target từ quét render:
     - .../rendered_split/playground/harbor/Deployment-harbor-core.yaml -> apps/playground/harbor/Deployment-harbor-core.yaml
-    - (fallback) env-app.yaml -> apps/env/app
+    - infra/ingress-nginx/ClusterRole-xxx.yaml (relative, Trivy không có prefix) -> apps/infra/ingress-nginx/ClusterRole-xxx.yaml
+    - (fallback) env-app.yaml (một file gộp) -> apps/env/app
     """
     if not target:
         return "unknown"
-    path = target.replace("\\", "/")
+    path = target.replace("\\", "/").strip()
     if "rendered_split" in path:
         idx = path.index("rendered_split") + len("rendered_split")
         if idx < len(path) and path[idx] == "/":
@@ -32,6 +33,9 @@ def rendered_target_to_path(target: str) -> str:
     if "rendered/" in path:
         path = path[path.index("rendered/") + len("rendered/"):]
     parts = path.split("/")
+    # Path dạng env/app/Kind-name.yaml (≥3 phần) -> giữ nguyên cấu trúc, chỉ thêm apps/
+    if len(parts) >= 3 and not path.startswith("apps/"):
+        return "apps/" + path.lstrip("/")
     filename = parts[-1]
     stem = filename.replace(".yaml", "").replace(".yml", "")
     if "-" in stem:
