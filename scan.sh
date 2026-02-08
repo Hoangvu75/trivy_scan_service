@@ -10,6 +10,9 @@ export TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-/tmp/trivy-cache}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/trivy-cache}"
 mkdir -p "$TRIVY_CACHE_DIR"
 
+# Dọn namespace tạm từ lần chạy trước (tránh "job already exists")
+kubectl delete namespace trivy-temp --ignore-not-found=true --timeout=15s 2>/dev/null || true
+
 echo "=== K8s Cluster Trivy Scan (live) ==="
 # TRIVY_SKIP_IMAGES=1: chỉ misconfig (~1-2 phút). Để trống: misconfig + vuln (~10-15 phút).
 if [ -n "$TRIVY_SKIP_IMAGES" ] && [ "$TRIVY_SKIP_IMAGES" != "0" ]; then
